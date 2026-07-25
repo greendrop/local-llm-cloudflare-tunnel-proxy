@@ -84,21 +84,22 @@ app.all('/*', (c) => {
   url.hostname = c.env.TUNNEL_HOSTNAME
   url.port = ''
 
+  // Headers は大文字小文字を区別せず 1 名前につき値を1つに保つため、
+  // プレーンオブジェクトのスプレッドで済ませず delete/set で明示的に組み立てる
+  const headers = new Headers(c.req.raw.headers)
+  headers.delete('authorization')
+  headers.delete('cookie')
+  headers.delete('host')
+  headers.delete('cf-access-jwt-assertion')
+  // プロキシのキーは渡さず、ヘッダーの存在だけ満たす
+  headers.set('x-api-key', UPSTREAM_API_KEY)
+  // Cloudflare Access Service Token 認証
+  headers.set('CF-Access-Client-Id', c.env.CF_CLIENT_ID)
+  headers.set('CF-Access-Client-Secret', c.env.CF_CLIENT_SECRET)
+
   return proxy(url, {
     raw: c.req.raw, // method / body / duplex:'half' / signal を引き継ぐ
-    headers: {
-      ...c.req.header(),
-      // 上流へ渡したくないヘッダー（undefined = 削除）
-      authorization: undefined,
-      cookie: undefined,
-      host: undefined,
-      'cf-access-jwt-assertion': undefined,
-      // プロキシのキーは渡さず、ヘッダーの存在だけ満たす
-      'x-api-key': UPSTREAM_API_KEY,
-      // Cloudflare Access Service Token 認証
-      'CF-Access-Client-Id': c.env.CF_CLIENT_ID,
-      'CF-Access-Client-Secret': c.env.CF_CLIENT_SECRET
-    }
+    headers
   })
 })
 

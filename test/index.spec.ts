@@ -142,6 +142,25 @@ describe('forwarding', () => {
     expect(captured?.headers.get('CF-Access-Client-Secret')).toBe(env.CF_CLIENT_SECRET)
   })
 
+  it('does not let a client-supplied CF-Access header spoof the injected Service Token', async ({ expect }) => {
+    let captured: Request | undefined
+    mockUpstream((req) => {
+      captured = req
+      return new Response('ok')
+    })
+
+    await request('/v1/models', {
+      headers: {
+        Authorization: `Bearer ${env.API_KEY}`,
+        'cf-access-client-id': 'attacker-spoofed-id',
+        'CF-ACCESS-CLIENT-SECRET': 'attacker-spoofed-secret'
+      }
+    })
+
+    expect(captured?.headers.get('cf-access-client-id')).toBe(env.CF_CLIENT_ID)
+    expect(captured?.headers.get('cf-access-client-secret')).toBe(env.CF_CLIENT_SECRET)
+  })
+
   it('passes through a streaming SSE upstream response unmodified', async ({ expect }) => {
     mockUpstream(() => {
       const stream = new ReadableStream({
