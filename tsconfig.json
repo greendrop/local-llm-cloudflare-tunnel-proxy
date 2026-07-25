@@ -9,5 +9,6 @@
       "ESNext"
     ],
     "types": ["./worker-configuration.d.ts"]
-  }
+  },
+  "include": ["src", "worker-configuration.d.ts"]
 }
