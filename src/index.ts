@@ -1,9 +1,11 @@
 import { Hono } from 'hono'
+import type { Context } from 'hono'
 import { proxy } from 'hono/proxy'
 import { timingSafeEqual } from 'hono/utils/buffer'
 
-type Bindings = {
-  /** クライアントが Authorization: Bearer で送る任意のキー */
+// テストの ProvidedEnv から参照するため export する
+export type Bindings = {
+  /** クライアントが Authorization: Bearer または x-api-key で送る任意のキー */
   API_KEY: string
   /** Cloudflare Access で保護された内部トンネルのホスト名（スキームなし） */
   TUNNEL_HOSTNAME: string
@@ -13,24 +15,61 @@ type Bindings = {
   CF_CLIENT_SECRET: string
 }
 
-const app = new Hono<{ Bindings: Bindings }>()
+type AppEnv = { Bindings: Bindings }
+
+const app = new Hono<AppEnv>()
+
+const UNAUTHORIZED_MESSAGE = 'Incorrect API key provided.'
+
+/**
+ * 上流の Anthropic 互換エンドポイント（Ollama / LM Studio）は x-api-key の
+ * 存在を前提にするが値は検証しない。プロキシの API_KEY を上流へ渡さないため
+ * ダミー値に差し替えて転送する。
+ */
+const UPSTREAM_API_KEY = 'local'
+
+/**
+ * Anthropic 互換クライアント（Anthropic SDK / Claude Code）は
+ * パス /v1/messages・anthropic-version・x-api-key のいずれかを伴う。
+ */
+const isAnthropicDialect = (c: Context<AppEnv>) =>
+  c.req.path.startsWith('/v1/messages') ||
+  c.req.header('anthropic-version') !== undefined ||
+  c.req.header('x-api-key') !== undefined
+
+// Anthropic 互換のエラー形状。Anthropic SDK / Claude Code がメッセージを表示できる
+const anthropicError = () => ({
+  type: 'error',
+  error: {
+    type: 'authentication_error',
+    message: UNAUTHORIZED_MESSAGE
+  },
+  request_id: `req_${crypto.randomUUID().replaceAll('-', '')}`
+})
 
 // OpenAI 互換のエラー形状。Cursor / OpenAI SDK がメッセージを表示できる
-const unauthorized = {
+const openaiError = () => ({
   error: {
-    message: 'Incorrect API key provided.',
+    message: UNAUTHORIZED_MESSAGE,
     type: 'invalid_request_error',
     param: null,
     code: 'invalid_api_key'
   }
-} as const
+})
 
 app.use('/*', async (c, next) => {
-  const expected = `Bearer ${c.env.API_KEY}`
-  const actual = c.req.header('Authorization') ?? ''
+  const key = c.env.API_KEY
 
-  if (!(await timingSafeEqual(expected, actual))) {
-    return c.json(unauthorized, 401, {
+  // OpenAI 互換は Authorization: Bearer、Anthropic 互換は x-api-key を送る。
+  // 分岐で早期 return せず両方を評価してから判定する。
+  const [byBearer, byApiKey] = await Promise.all([
+    timingSafeEqual(`Bearer ${key}`, c.req.header('Authorization') ?? ''),
+    timingSafeEqual(key, c.req.header('x-api-key') ?? '')
+  ])
+
+  if (!byBearer && !byApiKey) {
+    return c.json(isAnthropicDialect(c) ? anthropicError() : openaiError(), 401, {
+      // RFC 9110 は 401 に WWW-Authenticate を要求するため方言に関わらず付与する
       'WWW-Authenticate': 'Bearer error="invalid_token"'
     })
   }
@@ -54,6 +93,8 @@ app.all('/*', (c) => {
       cookie: undefined,
       host: undefined,
       'cf-access-jwt-assertion': undefined,
+      // プロキシのキーは渡さず、ヘッダーの存在だけ満たす
+      'x-api-key': UPSTREAM_API_KEY,
       // Cloudflare Access Service Token 認証
       'CF-Access-Client-Id': c.env.CF_CLIENT_ID,
       'CF-Access-Client-Secret': c.env.CF_CLIENT_SECRET
