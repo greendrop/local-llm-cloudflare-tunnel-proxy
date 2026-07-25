@@ -1,0 +1,16 @@
+[settings]
+experimental = true
+node.corepack = true
+lockfile = true
+minimum_release_age = "7d"
+
+[tools]
+betterleaks = "1.6.1"
+gh = "2.95.0"
+ghalint = "1.5.6"
+lefthook = "2.1.9"
+node = "24.17.0"
+yamlfmt = "0.21.0"
+
+[hooks]
+postinstall = "if [ -z \"${CI:-}\" ] && git rev-parse --git-dir > /dev/null 2>&1; then lefthook install; fi"
