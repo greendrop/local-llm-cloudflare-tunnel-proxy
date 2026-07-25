@@ -2,19 +2,16 @@
   "name": "local-llm-cloudflare-tunnel-proxy",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "$npm_execpath run build && vite preview",
-    "deploy": "$npm_execpath run build && wrangler deploy",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
     "hono": "^4.12.32"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.44.0",
-    "vite": "^8.1.4",
-    "vite-ssr-components": "^0.6.1",
+    "typescript": "^7.0.2",
     "wrangler": "^4.110.0"
   }
 }
