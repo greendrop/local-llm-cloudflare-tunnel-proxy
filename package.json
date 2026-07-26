@@ -6,6 +6,10 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt 'src/**/*.ts' 'test/**/*.ts' '*.ts'",
+    "format:check": "oxfmt --check 'src/**/*.ts' 'test/**/*.ts' '*.ts'",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
@@ -13,6 +17,9 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.18.8",
+    "oxfmt": "^0.60.0",
+    "oxlint": "^1.75.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10",
     "wrangler": "^4.110.0"

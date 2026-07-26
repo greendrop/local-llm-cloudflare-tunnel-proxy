@@ -14,7 +14,8 @@ const mockUpstream = (handler: (req: Request) => Response | Promise<Response>) =
 }
 
 /** 認証成功パスで使う、単に 200 を返すだけの上流モック */
-const mockUpstreamOk = () => mockUpstream(() => new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } }))
+const mockUpstreamOk = () =>
+  mockUpstream(() => new Response(JSON.stringify({ ok: true }), { headers: { 'content-type': 'application/json' } }))
 
 /** 401 で止まるはずのテストで、誤って上流に転送されていないかを検知するガード */
 const mockUpstreamMustNotBeCalled = () =>
@@ -88,12 +89,12 @@ describe('401 response body shape', () => {
   it('returns an Anthropic-shaped error for /v1/messages', async ({ expect }) => {
     mockUpstreamMustNotBeCalled()
     const res = await request('/v1/messages')
-    const body = (await res.json()) as { type: string; error: { type: string }; request_id: string }
+    const body = await res.json()
     expect(body).toMatchObject({
       type: 'error',
-      error: { type: 'authentication_error' }
+      error: { type: 'authentication_error' },
+      request_id: expect.stringMatching(/^req_/)
     })
-    expect(body.request_id).toMatch(/^req_/)
   })
 
   it('returns an Anthropic-shaped error when anthropic-version is present, regardless of path', async ({ expect }) => {
@@ -105,7 +106,9 @@ describe('401 response body shape', () => {
     expect(body).toMatchObject({ type: 'error', error: { type: 'authentication_error' } })
   })
 
-  it('returns an Anthropic-shaped error when x-api-key is present but wrong, regardless of path', async ({ expect }) => {
+  it('returns an Anthropic-shaped error when x-api-key is present but wrong, regardless of path', async ({
+    expect
+  }) => {
     mockUpstreamMustNotBeCalled()
     const res = await request('/v1/models', {
       headers: { 'x-api-key': 'wrong-key' }
@@ -122,7 +125,9 @@ describe('401 response body shape', () => {
 })
 
 describe('forwarding', () => {
-  it('rewrites the target host and injects Cloudflare Access headers while stripping client auth', async ({ expect }) => {
+  it('rewrites the target host and injects Cloudflare Access headers while stripping client auth', async ({
+    expect
+  }) => {
     let captured: Request | undefined
     mockUpstream((req) => {
       captured = req
