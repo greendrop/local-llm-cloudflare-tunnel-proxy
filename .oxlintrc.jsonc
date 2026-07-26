@@ -1,0 +1,22 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "import", "promise", "vitest"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "options": {
+    "typeAware": true,
+    "denyWarnings": true
+  },
+  "rules": {
+    "typescript/no-floating-promises": "error",
+    "typescript/no-misused-promises": "error",
+    // `export {}` は `declare global` を伴う .d.ts をモジュール化するための TS 定型句であり、
+    // このルールは TypeScript のその用法と衝突するため無効化する。
+    // https://github.com/sindresorhus/eslint-plugin-unicorn/issues/2710
+    "unicorn/require-module-specifiers": "off"
+  },
+  "ignorePatterns": ["worker-configuration.d.ts"]
+}

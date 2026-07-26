@@ -74,7 +74,7 @@ app.use('/*', async (c, next) => {
     })
   }
 
-  await next()
+  return next()
 })
 
 app.all('/*', (c) => {

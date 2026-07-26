@@ -1,0 +1,39 @@
+---
+# actionlint　と ghalint を使って GitHub Actions の静的解析をする
+#
+# - actionlint: https://github.com/rhysd/actionlint
+# - ghalint: https://github.com/suzuki-shunsuke/ghalint
+name: GitHub Actions Lint
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/*.yaml
+      - .github/workflows/*.yml
+      - mise.toml
+      - mise.lock
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Mise
+        uses: jdx/mise-action@dba19683ed58901619b14f395a24841710cb4925 # v4.1.0
+
+      - name: Run actionlint
+        run: actionlint -color
+
+      - name: Run ghalint
+        run: ghalint run

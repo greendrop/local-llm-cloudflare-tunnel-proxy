@@ -5,6 +5,7 @@ lockfile = true
 minimum_release_age = "7d"
 
 [tools]
+actionlint = "1.7.12"
 betterleaks = "1.6.1"
 gh = "2.95.0"
 ghalint = "1.5.6"
