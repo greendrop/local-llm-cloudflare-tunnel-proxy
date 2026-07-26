@@ -22,6 +22,16 @@ const app = new Hono<AppEnv>()
 const UNAUTHORIZED_MESSAGE = 'Incorrect API key provided.'
 
 /**
+ * 上流（Cloudflare Tunnel / Access）が生成した HTML エラーページを、
+ * クライアント SDK が解釈できる方言付き JSON エラーへ整形する際のメッセージ。
+ */
+const GATEWAY_TIMEOUT_MESSAGE =
+  'Upstream did not respond in time (Cloudflare Proxy Read Timeout, ~125s). ' +
+  'This usually means the model is still loading into memory, or the request used stream: false ' +
+  'for a long-running generation. Use stream: true and keep the model warm on the upstream side.'
+const BAD_GATEWAY_MESSAGE = 'Upstream (Cloudflare Tunnel / Access) is unreachable or rejected the request.'
+
+/**
  * 上流の Anthropic 互換エンドポイント（Ollama / LM Studio）は x-api-key の
  * 存在を前提にするが値は検証しない。プロキシの API_KEY を上流へ渡さないため
  * ダミー値に差し替えて転送する。
@@ -38,24 +48,55 @@ const isAnthropicDialect = (c: Context<AppEnv>) =>
   c.req.header('x-api-key') !== undefined
 
 // Anthropic 互換のエラー形状。Anthropic SDK / Claude Code がメッセージを表示できる
-const anthropicError = () => ({
+const anthropicError = (message: string = UNAUTHORIZED_MESSAGE, type: string = 'authentication_error') => ({
   type: 'error',
   error: {
-    type: 'authentication_error',
-    message: UNAUTHORIZED_MESSAGE
+    type,
+    message
   },
   request_id: `req_${crypto.randomUUID().replaceAll('-', '')}`
 })
 
 // OpenAI 互換のエラー形状。Cursor / OpenAI SDK がメッセージを表示できる
-const openaiError = () => ({
+const openaiError = (
+  message: string = UNAUTHORIZED_MESSAGE,
+  type: string = 'invalid_request_error',
+  code: string | null = 'invalid_api_key'
+) => ({
   error: {
-    message: UNAUTHORIZED_MESSAGE,
-    type: 'invalid_request_error',
+    message,
+    type,
     param: null,
-    code: 'invalid_api_key'
+    code
   }
 })
+
+/**
+ * 上流（Cloudflare Tunnel / Access）が返した Cloudflare 生成の HTML エラーページを判定する。
+ * Ollama / LM Studio 自身が返すエラーは JSON なので content-type で確実に切り分けられる。
+ */
+const isCloudflareGeneratedError = (res: Response) => {
+  const isErrorStatus = (res.status >= 520 && res.status <= 530) || res.status === 401 || res.status === 403
+  if (!isErrorStatus) return false
+  const contentType = res.headers.get('content-type') ?? ''
+  return !contentType.includes('application/json')
+}
+
+/**
+ * Cloudflare 生成のエラーページ（HTML）を、上流ステータスに応じた
+ * 方言付き JSON エラーへ整形する。判定はヘッダーのみで完結するため、
+ * ボディが流れ始めている通常の（成功・上流エラー問わず JSON の）レスポンスには影響しない。
+ */
+const upstreamErrorResponse = (c: Context<AppEnv>, upstreamStatus: number) => {
+  // 524: first byte が Proxy Read Timeout（~125秒）以内に来なかった
+  const status = upstreamStatus === 524 ? 504 : 502
+  const message = upstreamStatus === 524 ? GATEWAY_TIMEOUT_MESSAGE : BAD_GATEWAY_MESSAGE
+  const errorType = upstreamStatus === 524 ? 'timeout_error' : 'api_error'
+  return c.json(
+    isAnthropicDialect(c) ? anthropicError(message, errorType) : openaiError(message, 'server_error', null),
+    status
+  )
+}
 
 app.use('/*', async (c, next) => {
   const key = c.env.API_KEY
@@ -77,7 +118,7 @@ app.use('/*', async (c, next) => {
   return next()
 })
 
-app.all('/*', (c) => {
+app.all('/*', async (c) => {
   // パス・クエリはそのまま、ホストだけ内部トンネルへ差し替える
   const url = new URL(c.req.url)
   url.protocol = 'https:'
@@ -97,10 +138,24 @@ app.all('/*', (c) => {
   headers.set('CF-Access-Client-Id', c.env.CF_CLIENT_ID)
   headers.set('CF-Access-Client-Secret', c.env.CF_CLIENT_SECRET)
 
-  return proxy(url, {
-    raw: c.req.raw, // method / body / duplex:'half' / signal を引き継ぐ
-    headers
-  })
+  let res: Response
+  try {
+    res = await proxy(url, {
+      raw: c.req.raw, // method / body / duplex:'half' / signal を引き継ぐ
+      headers
+    })
+  } catch {
+    // Worker からの fetch 自体が失敗（Tunnel 到達不能など）
+    return upstreamErrorResponse(c, 530)
+  }
+
+  // 524（Proxy Read Timeout）や Access 拒否の HTML ページはそのまま返さず、
+  // クライアント SDK が解釈できる方言付き JSON エラーに整形する
+  if (isCloudflareGeneratedError(res)) {
+    return upstreamErrorResponse(c, res.status)
+  }
+
+  return res
 })
 
 export default app

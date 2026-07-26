@@ -205,3 +205,87 @@ describe('forwarding', () => {
     expect(receivedBody).toBe(payload)
   })
 })
+
+describe('upstream failure handling', () => {
+  /** Cloudflare が生成する HTML エラーページを模した上流レスポンス */
+  const mockUpstreamHtmlError = (status: number) =>
+    mockUpstream(
+      () => new Response('<html><body>error</body></html>', { status, headers: { 'content-type': 'text/html' } })
+    )
+
+  it('turns a 524 (Proxy Read Timeout) into a 504 with an OpenAI-shaped error', async ({ expect }) => {
+    mockUpstreamHtmlError(524)
+    const res = await request('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${env.API_KEY}` }
+    })
+    expect(res.status).toBe(504)
+    const body = await res.json()
+    expect(body).toMatchObject({
+      error: {
+        type: 'server_error',
+        code: null,
+        message: expect.stringContaining('Proxy Read Timeout')
+      }
+    })
+  })
+
+  it('turns a 524 (Proxy Read Timeout) into a 504 with an Anthropic-shaped error', async ({ expect }) => {
+    mockUpstreamHtmlError(524)
+    const res = await request('/v1/messages', {
+      headers: { 'x-api-key': env.API_KEY }
+    })
+    expect(res.status).toBe(504)
+    const body = await res.json()
+    expect(body).toMatchObject({
+      type: 'error',
+      error: {
+        type: 'timeout_error',
+        message: expect.stringContaining('Proxy Read Timeout')
+      },
+      request_id: expect.stringMatching(/^req_/)
+    })
+  })
+
+  it('turns a 530 (origin unreachable) into a 502', async ({ expect }) => {
+    mockUpstreamHtmlError(530)
+    const res = await request('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${env.API_KEY}` }
+    })
+    expect(res.status).toBe(502)
+  })
+
+  it('turns an HTML 403 (Access rejection) into a 502, not a 401', async ({ expect }) => {
+    mockUpstreamHtmlError(403)
+    const res = await request('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${env.API_KEY}` }
+    })
+    expect(res.status).toBe(502)
+  })
+
+  it('passes through a JSON 4xx from the upstream unmodified (does not misclassify it)', async ({ expect }) => {
+    mockUpstream(
+      () =>
+        new Response(JSON.stringify({ error: 'model not found' }), {
+          status: 404,
+          headers: { 'content-type': 'application/json' }
+        })
+    )
+    const res = await request('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${env.API_KEY}` }
+    })
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ error: 'model not found' })
+  })
+
+  it('turns a rejected upstream fetch into a 502 with a dialect-shaped error', async ({ expect }) => {
+    mockUpstream(() => {
+      throw new Error('network error')
+    })
+    const res = await request('/v1/messages', {
+      headers: { 'x-api-key': env.API_KEY }
+    })
+    expect(res.status).toBe(502)
+    const body = await res.json()
+    expect(body).toMatchObject({ type: 'error', error: { type: 'api_error' } })
+  })
+})
