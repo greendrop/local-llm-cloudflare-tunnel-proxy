@@ -1,6 +1,7 @@
 {
   "name": "local-llm-cloudflare-tunnel-proxy",
   "type": "module",
+  "packageManager": "pnpm@11.17.0",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",

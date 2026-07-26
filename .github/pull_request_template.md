@@ -10,4 +10,4 @@
 
 <!-- テスト・確認手順をチェックリスト形式で記載してください。 -->
 
-- [ ] 
+- [ ] `pnpm run lint` / `pnpm run typecheck` / `pnpm test` が通ることを確認した
