@@ -37,7 +37,9 @@ jobs:
         id: diff
         run: |
           set -euo pipefail
-          if git diff --quiet; then
+          # git diff --quiet は untracked ファイル(新規スキル追加など)を検知できないため
+          # git status --porcelain で判定する
+          if [ -z "$(git status --porcelain)" ]; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
