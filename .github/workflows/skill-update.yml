@@ -3,7 +3,7 @@ name: Skill Update
 
 on:
   schedule:
-    - cron: "0 0 * * 0" # Monday 09:00 JST (Sunday 00:00 UTC)
+    - cron: "0 0 * * 0" # Sunday 09:00 JST (Sunday 00:00 UTC)
   workflow_dispatch:
 
 concurrency:
@@ -70,7 +70,14 @@ jobs:
           git commit -m "chore(skills): gh skill update --all を実行"
 
           remote_url="https://x-access-token:${APP_TOKEN}@github.com/${{ github.repository }}.git"
-          git push "$remote_url" "${branch}:${branch}" --force-with-lease
+
+          # actions/checkout は対象ブランチを fetch しないため、リモート追跡ブランチがなく
+          # --force-with-lease 単体では「リモートに未存在であること」を期待してしまい、
+          # 2 回目以降の実行(既にブランチが存在する)で必ず失敗する。
+          # ls-remote で現在の SHA を取得し、期待値として明示することで
+          # 初回・2 回目以降のどちらでも安全な compare-and-swap にする。
+          current_remote_sha=$(git ls-remote "$remote_url" "refs/heads/${branch}" | cut -f1)
+          git push "$remote_url" "${branch}:${branch}" --force-with-lease="${branch}:${current_remote_sha}"
 
       - name: Create or update PR
         if: steps.diff.outputs.changed == 'true'
