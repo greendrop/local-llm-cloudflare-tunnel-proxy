@@ -11,6 +11,7 @@ on:
       - .github/workflows/*.yaml
       - .github/workflows/*.yml
       - mise.toml
+      - mise.lock
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}
