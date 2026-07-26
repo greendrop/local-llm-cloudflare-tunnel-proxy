@@ -90,6 +90,21 @@ pnpm wrangler secret list
 pnpm deploy
 ```
 
+## 制限事項・タイムアウトについて
+
+Worker から Cloudflare Tunnel（Access で保護された内部ホスト）への `fetch()` には、Cloudflare 側の **Proxy Read Timeout（約125秒）** が掛かります。これは上流からの最初のバイト（またはアイドル区間）が125秒以内に届かなかった場合に Cloudflare が `524` を返すというもので、Free/Pro/Business プランでは変更できません（Enterprise のみ Cache Rules 等で最大6000秒まで延長可能）。
+
+- **Worker 自体には実行時間の上限がなく**、クライアントが接続を維持している限り何分でもレスポンスをストリームし続けられます。Client ↔ Worker 間や Worker → Tunnel 間のストリーミング中の転送は125秒制限の対象外です（あくまで「最初のバイトが届くまで」のタイマー）。
+- 制限に引っかかるのは主に次の2パターンです。
+  1. **`stream: false` での長時間生成** — Ollama / LM Studio は生成が完了するまで1バイトも返さないため、生成に125秒以上かかると 524 になります。
+  2. **モデルのコールドロード** — `stream: true` でも、モデルがメモリに常駐しておらず読み込みに時間がかかる場合、最初の SSE チャンクが届く前に125秒を超えることがあります。
+- **したがって `stream: true` を強く推奨します。** また上流側で `OLLAMA_KEEP_ALIVE=-1`（Ollama）などを設定し、モデルを常駐させてコールドロードを避けることを推奨します。
+- 上流が Cloudflare の生成した HTML エラーページ（524 / 520–523 / 525 / 526 / 530、または Access に拒否された HTML の 401 / 403）を返した場合、この Worker はそれをそのまま返さず、リクエストの方言（OpenAI 互換 / Anthropic 互換）に合わせた JSON エラーへ整形して返します。
+  - `524` → `504`（`timeout_error` / `server_error`）
+  - それ以外の Cloudflare 生成エラー → `502`（`api_error` / `server_error`）
+  - Anthropic SDK / OpenAI SDK はいずれも 408/409/429/5xx を既定でリトライするため、コールドロードが原因の一時的なタイムアウトは多くの場合クライアント側のリトライで解消します。
+- cloudflared 側では SSE を壊さないよう `--no-chunked-encoding` を使わないでください。必要に応じて `http2Origin: true` の設定も検討してください。
+
 ## クライアント側の設定例
 
 ### Cursor
