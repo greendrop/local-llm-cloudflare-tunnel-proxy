@@ -277,6 +277,23 @@ describe('upstream failure handling', () => {
     expect(await res.json()).toEqual({ error: 'model not found' })
   })
 
+  it('does not misclassify a JSON error with a +json suffix or non-standard casing content-type', async ({
+    expect
+  }) => {
+    mockUpstream(
+      () =>
+        new Response(JSON.stringify({ error: 'forbidden' }), {
+          status: 403,
+          headers: { 'content-type': 'Application/Problem+JSON; charset=utf-8' }
+        })
+    )
+    const res = await request('/v1/chat/completions', {
+      headers: { Authorization: `Bearer ${env.API_KEY}` }
+    })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ error: 'forbidden' })
+  })
+
   it('turns a rejected upstream fetch into a 502 with a dialect-shaped error', async ({ expect }) => {
     mockUpstream(() => {
       throw new Error('network error')

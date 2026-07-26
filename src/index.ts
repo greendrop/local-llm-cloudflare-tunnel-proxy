@@ -78,8 +78,11 @@ const openaiError = (
 const isCloudflareGeneratedError = (res: Response) => {
   const isErrorStatus = (res.status >= 520 && res.status <= 530) || res.status === 401 || res.status === 403
   if (!isErrorStatus) return false
-  const contentType = res.headers.get('content-type') ?? ''
-  return !contentType.includes('application/json')
+  // application/problem+json や大文字小文字違いも JSON として扱う（+json サフィックスを含む）
+  const contentType = (res.headers.get('content-type') ?? '').toLowerCase()
+  const mediaType = contentType.split(';', 1)[0].trim()
+  const isJson = mediaType === 'application/json' || mediaType.endsWith('+json')
+  return !isJson
 }
 
 /**
