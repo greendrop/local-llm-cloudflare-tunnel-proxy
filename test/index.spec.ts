@@ -246,12 +246,16 @@ describe('upstream failure handling', () => {
     })
   })
 
-  it('turns a 530 (origin unreachable) into a 502', async ({ expect }) => {
+  it('turns a 530 (origin unreachable) into a 502 whose message includes the upstream status', async ({ expect }) => {
     mockUpstreamHtmlError(530)
     const res = await request('/v1/chat/completions', {
       headers: { Authorization: `Bearer ${env.API_KEY}` }
     })
     expect(res.status).toBe(502)
+    const body = await res.json()
+    expect(body).toMatchObject({
+      error: { message: expect.stringContaining('upstream status: 530') }
+    })
   })
 
   it('turns an HTML 403 (Access rejection) into a 502, not a 401', async ({ expect }) => {
@@ -294,7 +298,9 @@ describe('upstream failure handling', () => {
     expect(await res.json()).toEqual({ error: 'forbidden' })
   })
 
-  it('turns a rejected upstream fetch into a 502 with a dialect-shaped error', async ({ expect }) => {
+  it('turns a rejected upstream fetch into a 502 with a dialect-shaped error and no fabricated status', async ({
+    expect
+  }) => {
     mockUpstream(() => {
       throw new Error('network error')
     })
@@ -303,6 +309,13 @@ describe('upstream failure handling', () => {
     })
     expect(res.status).toBe(502)
     const body = await res.json()
-    expect(body).toMatchObject({ type: 'error', error: { type: 'api_error' } })
+    expect(body).toMatchObject({
+      type: 'error',
+      error: {
+        type: 'api_error',
+        // fetch 自体の失敗なので、実際には存在しない上流ステータスを message に含めない
+        message: expect.stringMatching(/^(?!.*upstream status: \d).*failed before a response was received/)
+      }
+    })
   })
 })

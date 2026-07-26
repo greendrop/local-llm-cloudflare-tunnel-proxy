@@ -89,15 +89,28 @@ const isCloudflareGeneratedError = (res: Response) => {
  * Cloudflare 生成のエラーページ（HTML）を、上流ステータスに応じた
  * 方言付き JSON エラーへ整形する。判定はヘッダーのみで完結するため、
  * ボディが流れ始めている通常の（成功・上流エラー問わず JSON の）レスポンスには影響しない。
+ *
+ * upstreamStatus が null の場合は、Worker からの fetch 自体が失敗しており
+ * （Tunnel 到達不能など）実際の上流ステータスコードは存在しない。
  */
-const upstreamErrorResponse = (c: Context<AppEnv>, upstreamStatus: number) => {
+const upstreamErrorResponse = (c: Context<AppEnv>, upstreamStatus: number | null) => {
   // 524: first byte が Proxy Read Timeout（~125秒）以内に来なかった
-  const status = upstreamStatus === 524 ? 504 : 502
-  const message = upstreamStatus === 524 ? GATEWAY_TIMEOUT_MESSAGE : BAD_GATEWAY_MESSAGE
-  const errorType = upstreamStatus === 524 ? 'timeout_error' : 'api_error'
+  if (upstreamStatus === 524) {
+    return c.json(
+      isAnthropicDialect(c)
+        ? anthropicError(GATEWAY_TIMEOUT_MESSAGE, 'timeout_error')
+        : openaiError(GATEWAY_TIMEOUT_MESSAGE, 'server_error', null),
+      504
+    )
+  }
+  // 運用時の原因特定のため、実際の上流ステータスが分かる場合はメッセージに含める
+  const message =
+    upstreamStatus === null
+      ? `${BAD_GATEWAY_MESSAGE} (fetch to upstream failed before a response was received)`
+      : `${BAD_GATEWAY_MESSAGE} (upstream status: ${upstreamStatus})`
   return c.json(
-    isAnthropicDialect(c) ? anthropicError(message, errorType) : openaiError(message, 'server_error', null),
-    status
+    isAnthropicDialect(c) ? anthropicError(message, 'api_error') : openaiError(message, 'server_error', null),
+    502
   )
 }
 
@@ -148,8 +161,8 @@ app.all('/*', async (c) => {
       headers
     })
   } catch {
-    // Worker からの fetch 自体が失敗（Tunnel 到達不能など）
-    return upstreamErrorResponse(c, 530)
+    // Worker からの fetch 自体が失敗（Tunnel 到達不能など）。実際の上流ステータスは存在しない
+    return upstreamErrorResponse(c, null)
   }
 
   // 524（Proxy Read Timeout）や Access 拒否の HTML ページはそのまま返さず、
