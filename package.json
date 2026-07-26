@@ -8,8 +8,8 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p test/tsconfig.json",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
-    "format": "oxfmt 'src/**/*.ts' 'test/**/*.ts' '*.ts'",
-    "format:check": "oxfmt --check 'src/**/*.ts' 'test/**/*.ts' '*.ts'",
+    "format": "oxfmt src/**/*.ts test/**/*.ts *.ts",
+    "format:check": "oxfmt --check src/**/*.ts test/**/*.ts *.ts",
     "cf-typegen": "wrangler types --env-interface CloudflareBindings"
   },
   "dependencies": {
