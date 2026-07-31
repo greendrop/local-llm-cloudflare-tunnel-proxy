@@ -86,9 +86,25 @@ pnpm wrangler secret list
 
 ## デプロイ
 
+### ローカルから
+
 ```bash
 pnpm deploy
 ```
+
+### GitHub Actions から（`workflow_dispatch`）
+
+GitHub の Actions タブから「Deploy」ワークフローを選び、「Run workflow」で手動デプロイできます。
+
+事前に、リポジトリの Settings → Secrets and variables → Actions に以下の Secrets を登録してください。
+
+| Secret 名 | 説明 |
+| --- | --- |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API トークン（"Edit Cloudflare Workers" テンプレート、または `Account / Workers Scripts: Edit` 権限で作成） |
+| `CLOUDFLARE_ACCOUNT_ID` | デプロイ先の Cloudflare アカウント ID（ダッシュボード、または `pnpm wrangler whoami` で確認） |
+| `CLOUDFLARE_WORKER_NAME` | デプロイ先の Worker 名（`wrangler.jsonc` の `name` を上書きします） |
+
+これらは CI がデプロイ先を特定するための認証情報であり、[Secret の設定](#secret-の設定) で登録する 4 つの Wrangler Secrets（Worker のランタイム用シークレット）とは別物です。Wrangler Secrets はデプロイ先の Worker ごとに、初回のみ手動で登録する必要があります。
 
 ## 制限事項・タイムアウトについて
 
